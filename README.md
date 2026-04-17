@@ -143,7 +143,28 @@ All patches resolve a post ID with `url_to_postid()` + slug fallback, then route
 - **No database.** `/api/scan` is stateless; the plugin calls it on demand. Revert history lives in WordPress post meta, not on the scanner. If you want persistent scan history, wire in Vercel KV or Postgres and store reports keyed by site URL.
 - **Serverless-friendly crawl.** The UI and plugin call `/api/discover` once, then `/api/scan?url=` per page in sequence. Each function invocation handles one page, well under Vercel limits.
 - **Chromium on Vercel.** `puppeteer-core` and `@sparticuz/chromium` are listed as `serverExternalPackages` in `next.config.mjs`; Vercel bundles the Chromium binary into the deployed function. The Hobby plan's 10 s function limit is too tight for deep scans — use **Pro** (60 s, configurable to 300 s) if you want deep mode.
-- **Local dev.** In non-Lambda environments the browser helper falls back to (a) `QATOOL_CHROME_EXECUTABLE` env var → a local Chrome binary, or (b) a dynamically imported `puppeteer` devDependency if you install it manually.
+- **Local dev.** In non-Lambda environments the browser helper tries, in order: (1) `QATOOL_BROWSER_WS` (remote headless service), (2) `QATOOL_CHROME_EXECUTABLE` → a local Chrome binary, (3) a dynamically-imported `puppeteer` devDependency, (4) `@sparticuz/chromium` as a last resort. Set `QATOOL_BROWSER_MODE` to `lambda` / `local-chrome` / `local-puppeteer` / `remote` to force one.
+
+## Troubleshooting deep scan
+
+**`libnss3.so: cannot open shared object file`** (or similar `libatk`, `libcups`, `libgbm`, `libasound`)
+Your host is missing system libraries Chromium depends on. This almost always happens when the Lambda-packaged binary from `@sparticuz/chromium` runs on a non-Lambda Linux host (including `vercel dev` on some distros). Fixes, in order of preference:
+
+1. **Install the libs** (Debian/Ubuntu):
+   ```bash
+   sudo apt-get update && sudo apt-get install -y \
+     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
+     libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+     libcairo2 libasound2
+   ```
+2. **Point to an existing Chrome**:
+   ```bash
+   export QATOOL_CHROME_EXECUTABLE=$(which google-chrome || which chromium)
+   ```
+3. **Install full Puppeteer for dev**: `npm i -D puppeteer` — this downloads a self-contained Chromium.
+4. **Use a hosted browser** (browserless, etc.) by setting `QATOOL_BROWSER_WS=wss://...`.
+
+**Still fails on Vercel?** Bump the function memory to ≥1024 MB in `vercel.json` and confirm `maxDuration: 60` (already set for `/api/scan`, `/api/snapshot`, `/api/compare`). The Hobby plan's 10 s cap is too tight for Puppeteer — use Pro.
 
 ## Directory layout
 
