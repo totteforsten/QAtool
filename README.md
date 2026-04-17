@@ -164,7 +164,33 @@ Your host is missing system libraries Chromium depends on. This almost always ha
 3. **Install full Puppeteer for dev**: `npm i -D puppeteer` — this downloads a self-contained Chromium.
 4. **Use a hosted browser** (browserless, etc.) by setting `QATOOL_BROWSER_WS=wss://...`.
 
-**Still fails on Vercel?** Bump the function memory to ≥1024 MB in `vercel.json` and confirm `maxDuration: 60` (already set for `/api/scan`, `/api/snapshot`, `/api/compare`). The Hobby plan's 10 s cap is too tight for Puppeteer — use Pro.
+**Still fails on Vercel with `libnss3.so`?**
+The Vercel Node runtime image does not always include `libnss3` / `libatk` / `libcups`, and these can't be installed into a serverless function. The reliable production answer is to point deep scan at a remote headless browser:
+
+```bash
+# In Vercel → Project → Settings → Environment Variables
+QATOOL_BROWSER_WS=wss://chrome.browserless.io?token=YOUR_TOKEN
+```
+
+Free plans on [browserless.io](https://browserless.io) or [Browserbase](https://browserbase.com) cover hobby-scale use. Any WebSocket-compatible headless Chrome service works.
+
+If you can't use a remote browser, self-host the scanner on a platform that lets you install apt packages — a Docker container on Fly.io, Railway, Render, or a VM. The Dockerfile needed is roughly:
+
+```dockerfile
+FROM node:20-slim
+RUN apt-get update && apt-get install -y \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+    libcairo2 libasound2 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY . .
+RUN npm ci && npm run build
+CMD ["npm", "start"]
+```
+
+**Deep scan failures are non-fatal.** If Puppeteer can't launch, `/api/scan?deep=1` still returns the fast/static report; it just appends one `deep-scan-unavailable` info finding explaining why. The UI and plugin keep working.
+
+**Other Vercel checks**: ensure the function has ≥1024 MB (set in `vercel.json`), and you're on **Pro** — Hobby's 10 s cap is too tight for Chromium.
 
 ## Directory layout
 

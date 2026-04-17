@@ -55,8 +55,19 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ ok: false, error: err?.message ?? String(err) }), {
-      status: 502,
+    const raw = err?.message ?? String(err);
+    const short = raw.split("\n")[0] ?? raw;
+    const browserUnavailable = /Could not launch a browser|libnss3|shared libraries/i.test(raw);
+    return new Response(JSON.stringify({
+      ok: false,
+      error: short,
+      code: browserUnavailable ? "browser-unavailable" : "snapshot-failed",
+      hint: browserUnavailable
+        ? "Set QATOOL_BROWSER_WS to a remote headless browser (e.g. browserless.io) or install system libs. See README troubleshooting."
+        : undefined,
+      detail: raw
+    }), {
+      status: browserUnavailable ? 503 : 502,
       headers: { "content-type": "application/json" }
     });
   }

@@ -17,9 +17,13 @@ export async function getBrowser(): Promise<Browser> {
 
   const puppeteer = (await import("puppeteer-core")).default;
   const mode = (process.env.QATOOL_BROWSER_MODE || "auto").toLowerCase();
-  // Authoritative Lambda signal. `VERCEL=1` alone is NOT — `vercel dev` sets it
-  // locally, where the Lambda-packaged Chromium won't have its system libs.
-  const isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  // Multiple signals because AWS_LAMBDA_FUNCTION_NAME isn't set on every
+  // Vercel runtime. Any one of these means we're inside a Lambda-like box.
+  const isLambda =
+    !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    !!process.env.LAMBDA_TASK_ROOT ||
+    !!process.env.AWS_EXECUTION_ENV ||
+    (process.env.VERCEL === "1" && process.env.NODE_ENV === "production");
   const hasRemote = !!process.env.QATOOL_BROWSER_WS;
   const hasLocalExe = !!process.env.QATOOL_CHROME_EXECUTABLE;
 

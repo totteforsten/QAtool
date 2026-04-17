@@ -51,19 +51,35 @@ export async function scanUrl(opts: string | ScanOptions): Promise<PageReport & 
   let links: PageReport["links"];
   let viewports: PageReport["viewports"];
   if (options.deep) {
-    deep = await deepScan({
-      url: fetched.finalUrl,
-      viewports: options.viewports ?? ["mobile", "desktop"],
-      checkLinksMax: options.checkLinks === false ? 0 : 80
-    });
-    findings = [...findings, ...deep.findings];
-    links = deep.links.map((l) => ({ url: l.url, status: l.status, ok: l.ok, label: l.label, error: l.error }));
-    viewports = deep.viewports.map((v) => ({
-      viewport: v.viewport,
-      width: v.width,
-      height: v.height,
-      findingCount: v.findings.length
-    }));
+    try {
+      deep = await deepScan({
+        url: fetched.finalUrl,
+        viewports: options.viewports ?? ["mobile", "desktop"],
+        checkLinksMax: options.checkLinks === false ? 0 : 80
+      });
+      findings = [...findings, ...deep.findings];
+      links = deep.links.map((l) => ({ url: l.url, status: l.status, ok: l.ok, label: l.label, error: l.error }));
+      viewports = deep.viewports.map((v) => ({
+        viewport: v.viewport,
+        width: v.width,
+        height: v.height,
+        findingCount: v.findings.length
+      }));
+    } catch (err: any) {
+      const raw = err?.message ?? String(err);
+      const short = raw.split("\n")[0] ?? raw;
+      findings.push({
+        id: "deep-unavailable",
+        category: "seo",
+        severity: "info",
+        code: "deep-scan-unavailable",
+        message:
+          `Deep scan (Puppeteer) could not run: ${short}. ` +
+          "Returned fast/static scan results only. " +
+          "Set QATOOL_BROWSER_WS to a remote headless browser (e.g. browserless) for reliable deep scans on Vercel.",
+        element: { snippet: raw }
+      });
+    }
   }
 
   return {

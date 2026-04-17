@@ -53,6 +53,17 @@ export async function POST(req: NextRequest) {
       diffPng: diff.diffPng.toString("base64")
     });
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message ?? String(err) }, { status: 502 });
+    const raw = err?.message ?? String(err);
+    const short = raw.split("\n")[0] ?? raw;
+    const browserUnavailable = /Could not launch a browser|libnss3|shared libraries/i.test(raw);
+    return NextResponse.json({
+      ok: false,
+      error: short,
+      code: browserUnavailable ? "browser-unavailable" : "compare-failed",
+      hint: browserUnavailable
+        ? "Set QATOOL_BROWSER_WS to a remote headless browser for visual-verify."
+        : undefined,
+      detail: raw
+    }, { status: browserUnavailable ? 503 : 502 });
   }
 }
