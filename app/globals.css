@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background: #0b0c10;
+  color: #e7e9ee;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.7rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255,255,255,.12);
+}
+
+.badge-critical { background: rgba(239,68,68,.15); color: #fca5a5; border-color: rgba(239,68,68,.3); }
+.badge-warning  { background: rgba(234,179,8,.15);  color: #fde68a; border-color: rgba(234,179,8,.3); }
+.badge-info     { background: rgba(59,130,246,.15); color: #93c5fd; border-color: rgba(59,130,246,.3); }
+
+.card {
+  background: #11131a;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+}
