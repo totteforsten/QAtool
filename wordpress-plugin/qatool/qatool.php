@@ -19,9 +19,10 @@ define( 'QATOOL_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'QATOOL_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 require_once QATOOL_PLUGIN_DIR . 'includes/class-api-client.php';
-require_once QATOOL_PLUGIN_DIR . 'includes/class-patcher.php';
 require_once QATOOL_PLUGIN_DIR . 'includes/class-elementor-patcher.php';
 require_once QATOOL_PLUGIN_DIR . 'includes/class-breakdance-patcher.php';
+require_once QATOOL_PLUGIN_DIR . 'includes/class-revert.php';
+require_once QATOOL_PLUGIN_DIR . 'includes/class-patcher.php';
 require_once QATOOL_PLUGIN_DIR . 'includes/class-admin.php';
 
 add_action( 'plugins_loaded', function () {

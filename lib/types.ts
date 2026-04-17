@@ -49,6 +49,14 @@ export interface PageMeta {
   robots?: string;
 }
 
+export interface LinkSummary {
+  url: string;
+  status: number;
+  ok: boolean;
+  label?: string;
+  error?: string;
+}
+
 export interface PageReport {
   url: string;
   fetchedAt: string;
@@ -58,6 +66,8 @@ export interface PageReport {
   meta: PageMeta;
   findings: Finding[];
   score: { seo: number; responsive: number };
+  links?: LinkSummary[];
+  viewports?: Array<{ viewport: string; width: number; height: number; findingCount: number }>;
 }
 
 export interface DiscoverResult {

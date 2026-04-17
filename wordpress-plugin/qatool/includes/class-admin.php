@@ -12,6 +12,9 @@ class QATool_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
 		add_action( 'wp_ajax_qatool_scan', array( $this, 'ajax_scan' ) );
 		add_action( 'wp_ajax_qatool_patch', array( $this, 'ajax_patch' ) );
+		add_action( 'wp_ajax_qatool_revert', array( $this, 'ajax_revert' ) );
+		add_action( 'wp_ajax_qatool_history', array( $this, 'ajax_history' ) );
+		add_action( 'wp_ajax_qatool_attach_visual', array( $this, 'ajax_attach_visual' ) );
 	}
 
 	public function menu() {
@@ -30,13 +33,17 @@ class QATool_Admin {
 		if ( strpos( (string) $hook, self::SLUG ) === false ) return;
 		wp_enqueue_style( 'qatool-admin', QATOOL_PLUGIN_URL . 'assets/admin.css', array(), QATOOL_VERSION );
 		wp_enqueue_script( 'qatool-admin', QATOOL_PLUGIN_URL . 'assets/admin.js', array( 'wp-element', 'wp-api-fetch' ), QATOOL_VERSION, true );
+		$settings = QATool_Api_Client::get_settings();
 		wp_localize_script(
 			'qatool-admin',
 			'QATool',
 			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( self::NONCE ),
-				'site'    => home_url( '/' ),
+				'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+				'nonce'          => wp_create_nonce( self::NONCE ),
+				'site'           => home_url( '/' ),
+				'scannerBase'    => untrailingslashit( $settings['endpoint'] ),
+				'scannerApiKey'  => $settings['api_key'],
+				'diffThreshold'  => 5.0,
 			)
 		);
 	}
@@ -93,9 +100,12 @@ class QATool_Admin {
 			<hr />
 
 			<h2><?php esc_html_e( 'Run a site scan', 'qatool' ); ?></h2>
-			<p><?php esc_html_e( 'Scans your site via the Next.js app, then lets you apply inline fixes to Elementor/Breakdance pages here in WordPress.', 'qatool' ); ?></p>
+			<p><?php esc_html_e( 'Scans your site via the Next.js app, then lets you apply inline fixes to Elementor/Breakdance pages here in WordPress. Deep scan adds Puppeteer-powered responsive, link, and UX checks (slower).', 'qatool' ); ?></p>
 			<p>
 				<button id="qatool-run" class="button button-primary" type="button"><?php esc_html_e( 'Scan this site', 'qatool' ); ?></button>
+				<label style="margin-left:12px"><input type="checkbox" id="qatool-deep" /> <?php esc_html_e( 'Deep scan', 'qatool' ); ?></label>
+				<label style="margin-left:12px"><input type="checkbox" id="qatool-verify" /> <?php esc_html_e( 'Visual-verify each patch', 'qatool' ); ?></label>
+				<label style="margin-left:12px"><input type="checkbox" id="qatool-auto-revert" /> <?php esc_html_e( 'Auto-revert if diff > 5%', 'qatool' ); ?></label>
 				<span id="qatool-status" class="qatool-status"></span>
 			</p>
 			<div id="qatool-results"></div>
@@ -115,8 +125,10 @@ class QATool_Admin {
 		}
 		$urls = array_slice( (array) ( $discover['urls'] ?? array() ), 0, $settings['max_pages'] );
 		$reports = array();
+		$deep = isset( $_POST['deep'] ) && $_POST['deep'];
 		foreach ( $urls as $url ) {
-			$res = QATool_Api_Client::scan( $url );
+			$path = 'api/scan?url=' . rawurlencode( $url ) . ( $deep ? '&deep=1&viewports=mobile,desktop' : '' );
+			$res = QATool_Api_Client::request( $path, array( 'method' => 'GET', 'timeout' => $deep ? 90 : 30 ) );
 			if ( is_wp_error( $res ) ) {
 				$reports[] = array( 'url' => $url, 'error' => $res->get_error_message() );
 				continue;
@@ -129,9 +141,50 @@ class QATool_Admin {
 			$post_id = QATool_Patcher::url_to_post_id( $report['url'] );
 			$report['post_id'] = $post_id;
 			$report['builder'] = $post_id ? QATool_Patcher::detect_builder( $post_id ) : null;
+			$report['history'] = $post_id ? QATool_Revert::get_log( $post_id ) : array();
 			$reports[] = $report;
 		}
 		wp_send_json_success( array( 'reports' => $reports, 'seo_plugin' => QATool_Patcher::detect_seo_plugin() ) );
+	}
+
+	public function ajax_revert() {
+		check_ajax_referer( self::NONCE, 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'forbidden', 403 );
+
+		$post_id  = (int) ( $_POST['post_id'] ?? 0 );
+		$entry_id = sanitize_text_field( wp_unslash( $_POST['entry_id'] ?? '' ) );
+		if ( ! $post_id || ! $entry_id ) wp_send_json_error( 'Missing post_id or entry_id.' );
+
+		$result = QATool_Revert::revert( $post_id, $entry_id );
+		if ( is_wp_error( $result ) ) wp_send_json_error( $result->get_error_message() );
+		wp_send_json_success( array( 'result' => $result, 'history' => QATool_Revert::get_log( $post_id ) ) );
+	}
+
+	public function ajax_history() {
+		check_ajax_referer( self::NONCE, 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'forbidden', 403 );
+		$post_id = (int) ( $_POST['post_id'] ?? 0 );
+		if ( ! $post_id ) wp_send_json_error( 'Missing post_id.' );
+		wp_send_json_success( array( 'history' => QATool_Revert::get_log( $post_id ) ) );
+	}
+
+	public function ajax_attach_visual() {
+		check_ajax_referer( self::NONCE, 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error( 'forbidden', 403 );
+		$post_id  = (int) ( $_POST['post_id'] ?? 0 );
+		$entry_id = sanitize_text_field( wp_unslash( $_POST['entry_id'] ?? '' ) );
+		$diff     = isset( $_POST['diff_percent'] ) ? (float) $_POST['diff_percent'] : null;
+		$viewport = sanitize_text_field( wp_unslash( $_POST['viewport'] ?? 'desktop' ) );
+		if ( ! $post_id || ! $entry_id || $diff === null ) wp_send_json_error( 'Missing fields.' );
+
+		QATool_Revert::annotate( $post_id, $entry_id, array(
+			'visual' => array(
+				'diff_percent' => $diff,
+				'viewport'     => $viewport,
+				'captured_at'  => time(),
+			),
+		) );
+		wp_send_json_success();
 	}
 
 	public function ajax_patch() {

@@ -46,22 +46,42 @@ class QATool_Patcher {
 
 		switch ( $type ) {
 			case 'meta-title':
-				return self::patch_seo_field( $post_id, 'title', $patch, $dry_run );
+				$result = self::patch_seo_field( $post_id, 'title', $patch, $dry_run );
+				break;
 			case 'meta-description':
-				return self::patch_seo_field( $post_id, 'description', $patch, $dry_run );
+				$result = self::patch_seo_field( $post_id, 'description', $patch, $dry_run );
+				break;
 			case 'canonical':
-				return self::patch_seo_field( $post_id, 'canonical', $patch, $dry_run );
+				$result = self::patch_seo_field( $post_id, 'canonical', $patch, $dry_run );
+				break;
 			case 'alt-text':
-				return self::patch_alt_text( $post_id, $patch, $dry_run );
+				$result = self::patch_alt_text( $post_id, $patch, $dry_run );
+				break;
 			case 'image-dimensions':
-				return self::patch_image_dimensions( $post_id, $patch, $dry_run );
+				$result = self::patch_image_dimensions( $post_id, $patch, $dry_run );
+				break;
 			case 'add-viewport':
 				return new WP_Error(
 					'qatool_patch_theme',
 					__( 'Viewport tag must be added in the theme header.php — the plugin cannot patch this automatically.', 'qatool' )
 				);
+			default:
+				return new WP_Error( 'qatool_patch_unsupported', sprintf( __( 'Unsupported patch type "%s".', 'qatool' ), $type ) );
 		}
-		return new WP_Error( 'qatool_patch_unsupported', sprintf( __( 'Unsupported patch type "%s".', 'qatool' ), $type ) );
+
+		if ( is_wp_error( $result ) || $dry_run ) return $result;
+
+		$entry = QATool_Revert::record( $post_id, array(
+			'patch_type'   => $type,
+			'target'       => esc_url_raw( $patch['target'] ?? '' ),
+			'before_value' => $result['before'] ?? null,
+			'after_value'  => $result['value'] ?? ( $patch['value'] ?? ( $patch['suggestion'] ?? null ) ),
+			'builder'      => $result['builder'] ?? null,
+			'meta_key'     => $result['meta_key'] ?? null,
+			'attachment_before_alt' => $result['attachment_before_alt'] ?? null,
+		) );
+		$result['history_id'] = $entry['id'] ?? null;
+		return $result;
 	}
 
 	private static function patch_seo_field( $post_id, $field, array $patch, $dry_run ) {
@@ -97,12 +117,14 @@ class QATool_Patcher {
 			return new WP_Error( 'qatool_patch_no_field', __( 'No matching SEO meta field.', 'qatool' ) );
 		}
 
+		$before = get_post_meta( $post_id, $meta_key, true );
+
 		if ( $dry_run ) {
-			return array( 'ok' => true, 'dry_run' => true, 'meta_key' => $meta_key, 'value' => $value );
+			return array( 'ok' => true, 'dry_run' => true, 'meta_key' => $meta_key, 'value' => $value, 'before' => $before );
 		}
 
 		update_post_meta( $post_id, $meta_key, wp_slash( $value ) );
-		return array( 'ok' => true, 'meta_key' => $meta_key, 'value' => $value );
+		return array( 'ok' => true, 'meta_key' => $meta_key, 'value' => $value, 'before' => $before );
 	}
 
 	private static function patch_alt_text( $post_id, array $patch, $dry_run ) {
@@ -118,21 +140,38 @@ class QATool_Patcher {
 		$builder = self::detect_builder( $post_id );
 		$attachment_id = attachment_url_to_postid( $target );
 		$results = array();
+		$before = null;
 
 		if ( $builder === 'elementor' ) {
-			$results['elementor'] = QATool_Elementor_Patcher::set_image_alt( $post_id, $target, $alt, $dry_run );
+			$r = QATool_Elementor_Patcher::set_image_alt( $post_id, $target, $alt, $dry_run );
+			$results['elementor'] = $r;
+			if ( is_array( $r ) && array_key_exists( 'before', $r ) ) $before = $r['before'];
 		} elseif ( $builder === 'breakdance' ) {
-			$results['breakdance'] = QATool_Breakdance_Patcher::set_image_alt( $post_id, $target, $alt, $dry_run );
+			$r = QATool_Breakdance_Patcher::set_image_alt( $post_id, $target, $alt, $dry_run );
+			$results['breakdance'] = $r;
+			if ( is_array( $r ) && array_key_exists( 'before', $r ) ) $before = $r['before'];
 		}
 
-		if ( $attachment_id && ! $dry_run ) {
-			update_post_meta( $attachment_id, '_wp_attachment_image_alt', wp_slash( $alt ) );
-			$results['attachment'] = array( 'id' => $attachment_id, 'updated' => true );
-		} elseif ( $attachment_id ) {
-			$results['attachment'] = array( 'id' => $attachment_id, 'dry_run' => true );
+		$attachment_before = null;
+		if ( $attachment_id ) {
+			$attachment_before = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
+			if ( ! $dry_run ) {
+				update_post_meta( $attachment_id, '_wp_attachment_image_alt', wp_slash( $alt ) );
+				$results['attachment'] = array( 'id' => $attachment_id, 'updated' => true );
+			} else {
+				$results['attachment'] = array( 'id' => $attachment_id, 'dry_run' => true );
+			}
 		}
+		if ( $before === null ) $before = $attachment_before;
 
-		return array( 'ok' => true, 'builder' => $builder, 'results' => $results );
+		return array(
+			'ok' => true,
+			'builder' => $builder,
+			'results' => $results,
+			'before' => $before,
+			'value' => $alt,
+			'attachment_before_alt' => $attachment_before,
+		);
 	}
 
 	private static function patch_image_dimensions( $post_id, array $patch, $dry_run ) {

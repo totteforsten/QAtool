@@ -39,6 +39,18 @@ export default function ReportCard({ report }: { report: PageReport }) {
           <MetaRow label="Canonical" value={report.meta.canonical} />
           <MetaRow label="Viewport" value={report.meta.viewport} />
           <MetaRow label="H1" value={report.meta.h1s.join(" | ")} />
+          {report.viewports && report.viewports.length > 0 && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-white/40 mb-2">Viewports audited</div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {report.viewports.map((v) => (
+                  <span key={v.viewport} className="badge badge-info">
+                    {v.viewport} {v.width}×{v.height} · {v.findingCount} finding{v.findingCount === 1 ? "" : "s"}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {Object.entries(grouped).map(([cat, list]) => (
             <div key={cat}>
               <div className="text-xs uppercase tracking-wide text-white/40 mb-2">{cat}</div>
@@ -49,9 +61,35 @@ export default function ReportCard({ report }: { report: PageReport }) {
               </ul>
             </div>
           ))}
+          {report.links && report.links.length > 0 && <LinksSection links={report.links} />}
         </div>
       )}
     </section>
+  );
+}
+
+function LinksSection({ links }: { links: NonNullable<PageReport["links"]> }) {
+  const broken = links.filter((l) => !l.ok);
+  const ok = links.length - broken.length;
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-white/40 mb-2">
+        Links — {ok} ok · {broken.length} broken / {links.length} checked
+      </div>
+      {broken.length > 0 && (
+        <ul className="space-y-1 text-xs">
+          {broken.slice(0, 50).map((l) => (
+            <li key={l.url} className="flex gap-2 items-baseline">
+              <span className="badge badge-critical shrink-0">{l.status || "ERR"}</span>
+              <a href={l.url} target="_blank" rel="noreferrer" className="text-white/80 break-all hover:underline">
+                {l.url}
+              </a>
+              {l.error && <span className="text-white/40">— {l.error}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

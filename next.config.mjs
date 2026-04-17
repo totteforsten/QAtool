@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
   experimental: {
-    serverActions: { bodySizeLimit: "2mb" }
+    serverActions: { bodySizeLimit: "4mb" }
   }
 };
 

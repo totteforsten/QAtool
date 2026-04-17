@@ -9,6 +9,7 @@ type Status = "idle" | "discovering" | "scanning" | "done" | "error";
 export default function ScanRunner() {
   const [url, setUrl] = useState("");
   const [maxPages, setMaxPages] = useState(10);
+  const [deep, setDeep] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [urls, setUrls] = useState<string[]>([]);
@@ -41,7 +42,12 @@ export default function ScanRunner() {
       for (const target of list) {
         if (cancelRef.current) break;
         try {
-          const r = await fetch(`/api/scan?url=${encodeURIComponent(target)}`).then((res) => res.json());
+          const qs = new URLSearchParams({ url: target });
+          if (deep) {
+            qs.set("deep", "1");
+            qs.set("viewports", "mobile,desktop");
+          }
+          const r = await fetch(`/api/scan?${qs.toString()}`).then((res) => res.json());
           if (r.ok) acc.push(r.report);
           else acc.push(errReport(target, r.error));
         } catch (e: any) {
@@ -87,6 +93,11 @@ export default function ScanRunner() {
               </option>
             ))}
           </select>
+          <label className="inline-flex items-center gap-2 text-sm bg-black/40 border border-white/10 rounded-lg px-3 py-2 cursor-pointer select-none">
+            <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="accent-indigo-400" />
+            <span>Deep scan</span>
+            <span className="text-white/40 text-xs">(Puppeteer + links)</span>
+          </label>
           {status === "scanning" ? (
             <button
               onClick={cancel}

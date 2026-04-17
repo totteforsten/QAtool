@@ -19,34 +19,37 @@ class QATool_Elementor_Patcher {
 		}
 
 		$count = 0;
+		$previous = null;
 		$target = self::normalize_url( $image_url );
-		self::walk( $data, function ( &$node ) use ( $target, $alt, &$count ) {
+		self::walk( $data, function ( &$node ) use ( $target, $alt, &$count, &$previous ) {
 			if ( ! is_array( $node ) ) return;
 			if ( isset( $node['widgetType'] ) ) {
 				if ( in_array( $node['widgetType'], array( 'image', 'theme-site-logo' ), true ) ) {
 					$settings = &$node['settings'];
 					if ( isset( $settings['image']['url'] ) && self::normalize_url( $settings['image']['url'] ) === $target ) {
+						if ( $previous === null ) $previous = $settings['image']['alt'] ?? '';
 						$settings['image']['alt'] = $alt;
 						$count++;
 					}
 				}
 				if ( $node['widgetType'] === 'image-box' && isset( $node['settings']['image']['url'] )
 					&& self::normalize_url( $node['settings']['image']['url'] ) === $target ) {
+					if ( $previous === null ) $previous = $node['settings']['image']['alt'] ?? '';
 					$node['settings']['image']['alt'] = $alt;
 					$count++;
 				}
-				// image-carousel, image-gallery: array of items
 				if ( in_array( $node['widgetType'], array( 'image-carousel', 'image-gallery' ), true ) && ! empty( $node['settings']['carousel'] ) ) {
 					foreach ( $node['settings']['carousel'] as &$item ) {
 						if ( isset( $item['url'] ) && self::normalize_url( $item['url'] ) === $target ) {
+							if ( $previous === null ) $previous = $item['alt'] ?? '';
 							$item['alt'] = $alt;
 							$count++;
 						}
 					}
 				}
 			}
-			// background images on sections/columns
 			if ( isset( $node['settings']['background_image']['url'] ) && self::normalize_url( $node['settings']['background_image']['url'] ) === $target ) {
+				if ( $previous === null ) $previous = $node['settings']['background_image']['alt'] ?? '';
 				$node['settings']['background_image']['alt'] = $alt;
 				$count++;
 			}
@@ -56,7 +59,7 @@ class QATool_Elementor_Patcher {
 			return array( 'ok' => false, 'reason' => 'no_match' );
 		}
 		if ( $dry_run ) {
-			return array( 'ok' => true, 'dry_run' => true, 'updated' => $count );
+			return array( 'ok' => true, 'dry_run' => true, 'updated' => $count, 'before' => $previous );
 		}
 
 		$encoded = wp_slash( wp_json_encode( $data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
@@ -71,7 +74,7 @@ class QATool_Elementor_Patcher {
 			}
 		}
 
-		return array( 'ok' => true, 'updated' => $count );
+		return array( 'ok' => true, 'updated' => $count, 'before' => $previous );
 	}
 
 	private static function walk( &$nodes, $cb ) {
